@@ -11,6 +11,8 @@ Authors
 import copy
 import math
 
+from mamba_ssm import Mamba2
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -638,6 +640,95 @@ class SBTransformerBlock(nn.Module):
             return self.mdl(x + pos_enc)[0]
         else:
             return self.mdl(x)[0]
+
+
+class MambaBlock(nn.Module):
+    """A wrapper for Mamba2.
+
+    Arguments
+    ---------
+    num_layers : int
+        Number of layers.
+    d_model : int
+        Dimensionality of the representation.
+    input_shape : tuple
+        Shape of input.
+    dropout : float
+        Dropout rate.
+
+    Example
+    -------
+    >>> x = torch.randn(10, 100, 64)
+    >>> block = SBTransformerBlock(1, 64, 8)
+    >>> x = block(x)
+    >>> x.shape
+    torch.Size([10, 100, 64])
+    """
+
+    def __init__(
+        self,
+        num_layers,
+        d_model,
+        d_state,
+        d_conv,
+        expand,
+        input_shape=None,
+        dropout=0.1,
+        #activation="relu",
+    ):
+        super().__init__()
+
+        # if activation == "relu":
+        #     activation = nn.ReLU
+        # elif activation == "gelu":
+        #     activation = nn.GELU
+        # else:
+        #     raise ValueError("unknown activation")
+
+        self.mdl = nn.Sequential()
+
+        for _ in range(num_layers):
+            self.mdl.append(Mamba2(
+                d_model=d_model,
+                d_state=d_state,
+                d_conv=d_conv,
+                expand=expand
+            ))
+
+        # self.mdl = TransformerEncoder(
+        #     num_layers=num_layers,
+        #     nhead=nhead,
+        #     d_ffn=d_ffn,
+        #     input_shape=input_shape,
+        #     d_model=d_model,
+        #     kdim=kdim,
+        #     vdim=vdim,
+        #     dropout=dropout,
+        #     activation=activation,
+        #     normalize_before=norm_before,
+        #     attention_type=attention_type,
+        # )
+        #
+        # if use_positional_encoding:
+        #     self.pos_enc = PositionalEncoding(input_size=d_model)
+
+    def forward(self, x):
+        """Returns the transformed output.
+
+        Arguments
+        ---------
+        x : torch.Tensor
+            Tensor shape [B, L, N],
+            where, B = Batchsize,
+                   L = time points
+                   N = number of filters
+
+        Returns
+        -------
+        out : torch.Tensor
+            The transformed output.
+        """
+        return self.mdl(x)
 
 
 class SBRNNBlock(nn.Module):
