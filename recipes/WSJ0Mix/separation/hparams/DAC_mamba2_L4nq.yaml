@@ -14,7 +14,7 @@ __set_seed: !apply:torch.manual_seed [1234]
 
 # e.g. '/yourpath/wsj0-mix/2speakers'
 # end with 2speakers for wsj0-2mix or 3speakers for wsj0-3mix
-data_folder:
+data_folder: !PLACEHOLDER
 
 # the path for wsj0/si_tr_s/ folder -- only needed if dynamic mixing is used
 # e.g. /yourpath/wsj0-processed/si_tr_s/
@@ -118,14 +118,12 @@ test_dataloader_opts:
 channels: 1024
 block_channels: 256 #1024 #256
 
-block: !new:speechbrain.lobes.models.dual_path.SBTransformerBlock
+block: !new:speechbrain.lobes.models.dual_path.Mamba2Block
   num_layers: 16  #16
   d_model: 256
-  nhead: 8  #1/8
-  d_ffn: 1024             #2048?
-  dropout: 0.1  #0.0/0.1/0.5
-  use_positional_encoding: true
-  norm_before: true
+  d_state: 64  #128
+  d_conv: 4   #2,3?
+  expand: 2 #3,4
 
 dacmodel: !new:speechbrain.lobes.models.codecformer3.DACWrapper
   input_sample_rate: 8000
@@ -163,5 +161,11 @@ checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
     sepmodel: !ref <sepmodel>
     counter: !ref <epoch_counter>
     lr_scheduler: !ref <lr_scheduler>
-train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
-  save_file: !ref <train_log>
+
+train_logger: !new:speechbrain.utils.train_logger.WandBLogger
+  initializer: !name:wandb.init
+  entity: "salmanhussainali03-concordia-university"# WandB entity or team name
+  project: "IFT-4030 Project"            # WandB project name
+  name: !ref<experiment_name>      # Custom name for this run
+  reinit: true                     # Reinitialize the WandB run if needed
+  resume: "allow"                  # Allow resuming if the ID matches an existing run
