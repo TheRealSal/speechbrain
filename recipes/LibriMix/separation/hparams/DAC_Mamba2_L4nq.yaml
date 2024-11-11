@@ -40,7 +40,7 @@ num_spks: 2 # set to 3 for wsj0-3mix
 noprogressbar: false
 save_audio: true # Save estimated sources on disk
 n_audio_to_save: 5
-sample_rate: 8000
+sample_rate: 16000
 quantize_before: false
 quantize_after: false
 

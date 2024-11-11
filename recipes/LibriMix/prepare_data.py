@@ -39,12 +39,12 @@ def prepare_librimix(
             assert (
                 "Libri2Mix" in datapath
             ), "Inconsistent number of speakers and datapath"
-            create_libri2mix_csv(datapath, savepath, addnoise=librimix_addnoise)
+            create_libri2mix_csv(datapath, savepath, addnoise=librimix_addnoise, version="wav16k/min/")
         elif n_spks == 3:
             assert (
                 "Libri3Mix" in datapath
             ), "Inconsistent number of speakers and datapath"
-            create_libri3mix_csv(datapath, savepath, addnoise=librimix_addnoise)
+            create_libri3mix_csv(datapath, savepath, addnoise=librimix_addnoise, version="wav16k/min/")
         else:
             raise ValueError("Unsupported Number of Speakers")
     else:
