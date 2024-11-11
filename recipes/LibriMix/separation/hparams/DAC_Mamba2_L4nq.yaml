@@ -128,7 +128,7 @@ block: !new:speechbrain.lobes.models.dual_path.Mamba2Block
 
 dacmodel: !new:speechbrain.lobes.models.codecformer3.DACWrapper
   input_sample_rate: 8000
-  DAC_model_path:   #if None, will download model from huggingface. Otherwise, path to checkpoint should be provided for the model to be loaded. Model has been hardcoded to download the 16khz model. please modify the code if you need another model.
+  DAC_model_path: /home/salmanhu/.cache/descript/dac/weights_16khz_8kbps_0.0.5.pth  #if None, will download model from huggingface. Otherwise, path to checkpoint should be provided for the model to be loaded. Model has been hardcoded to download the 16khz model. please modify the code if you need another model.
   DAC_sample_rate: 16000
   Freeze: true
 
