@@ -36,6 +36,8 @@ class DACWrapper():
 
         if DAC_model_path == None:
             model_path = dac.utils.download(model_type="16khz")
+        else:
+            model_path = DAC_model_path
 
         self.model = dac.DAC.load(model_path)
 
