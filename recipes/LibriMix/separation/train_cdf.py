@@ -657,7 +657,7 @@ if __name__ == "__main__":
     from prepare_data import prepare_librimix  # noqa
 
     run_on_main(
-        prepare_librimix(),
+        prepare_librimix,
         kwargs={
             "datapath": hparams["data_folder"],
             "savepath": hparams["save_folder"],
