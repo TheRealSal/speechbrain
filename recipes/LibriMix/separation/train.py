@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 
 # Define training procedure
 class Separation(sb.Brain):
-    def compute_forward(self, mix, targets, stage, noise=None):
+    def compute_forward(self, mix, targets, stage, noise=None, dummy_tensor=None):
         """Forward computations from the mixture to the separated signals."""
 
         # Unpack lists and put tensors in the right device
