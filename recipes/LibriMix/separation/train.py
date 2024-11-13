@@ -84,8 +84,14 @@ class Separation(sb.Brain):
                     mix, targets = self.cut_signals(mix, targets)
 
         # Separation
-        mix_w = self.hparams.Encoder(mix)
-        est_mask = self.hparams.MaskNet(mix_w)
+        # mix_w = self.hparams.Encoder(mix)
+        mix_w = torch.utils.checkpoint.checkpoint(
+            self.hparams.Encoder, mix,
+        )
+        est_mask = torch.utils.checkpoint.checkpoint(
+            self.hparams.MaskNet, mix_w,
+        )
+        # est_mask = self.hparams.MaskNet(mix_w)
         mix_w = torch.stack([mix_w] * self.hparams.num_spks)
         sep_h = mix_w * est_mask
 
@@ -134,10 +140,17 @@ class Separation(sb.Brain):
                     dtype=amp.dtype,
                     device_type=torch.device(self.device).type,
                 ):
-                    predictions, targets = self.compute_forward(
-                        mixture, targets, sb.Stage.TRAIN, noise
+                    # predictions, targets = self.compute_forward(
+                    #     mixture, targets, sb.Stage.TRAIN, noise
+                    # )
+                    # loss = self.compute_objectives(predictions, targets)
+                    predictions, targets = torch.utils.checkpoint.checkpoint(
+                        self.compute_forward, mixture, targets, sb.Stage.TRAIN, noise,
+                        torch.empty(1, requires_grad=True)
                     )
-                    loss = self.compute_objectives(predictions, targets)
+                    loss = torch.utils.checkpoint.checkpoint(
+                        self.compute_objectives, predictions, targets
+                    )
 
                     # hard threshold the easy dataitems
                     if self.hparams.threshold_byloss:
@@ -169,10 +182,16 @@ class Separation(sb.Brain):
                     )
                     loss.data = torch.tensor(0.0).to(self.device)
             else:
-                predictions, targets = self.compute_forward(
-                    mixture, targets, sb.Stage.TRAIN, noise
+                # predictions, targets = self.compute_forward(
+                #     mixture, targets, sb.Stage.TRAIN, noise
+                # )
+                # loss = self.compute_objectives(predictions, targets)
+                predictions, targets = torch.utils.checkpoint.checkpoint(
+                    self.compute_forward, mixture, targets, sb.Stage.TRAIN, noise, torch.empty(1, requires_grad=True)
                 )
-                loss = self.compute_objectives(predictions, targets)
+                loss = torch.utils.checkpoint.checkpoint(
+                    self.compute_objectives, predictions, targets
+                )
 
                 if self.hparams.threshold_byloss:
                     th = self.hparams.threshold
