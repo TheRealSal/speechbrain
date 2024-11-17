@@ -156,7 +156,7 @@ epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
 
 modules:
   sepmodel: !ref <sepmodel>
-  dacmodel: !ref <dacmodel>
+#  dacmodel: !ref <dacmodel>
 checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
   checkpoints_dir: !ref <save_folder>
   recoverables:
