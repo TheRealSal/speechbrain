@@ -22,7 +22,7 @@ data_folder: !PLACEHOLDER
 # you can do this conversion with the script ../meta/preprocess_dynamic_mixing.py
 base_folder_dm: /yourpath/wsj0-processed/si_tr_s/
 
-experiment_name: codecformer/DAC_original_L4nq
+experiment_name: codecmamba/DAC_original_L4nq
 output_folder: !ref results/<experiment_name>/<seed>
 train_log: !ref <output_folder>/train_log.txt
 save_folder: !ref <output_folder>/save
@@ -127,7 +127,7 @@ block: !new:speechbrain.lobes.models.dual_path.Mamba2Block
   expand: 2 #3,4
 
 dacmodel: !new:speechbrain.lobes.models.codecformer3.DACWrapper
-  input_sample_rate: 8000
+  input_sample_rate: 16000
   DAC_model_path: /home/salmanhu/.cache/descript/dac/weights_16khz_8kbps_0.0.5.pth  #if None, will download model from huggingface. Otherwise, path to checkpoint should be provided for the model to be loaded. Model has been hardcoded to download the 16khz model. please modify the code if you need another model.
   DAC_sample_rate: 16000
   Freeze: true
@@ -156,9 +156,11 @@ epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
 
 modules:
   sepmodel: !ref <sepmodel>
+  dacmodel: !ref <dacmodel>
 checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
   checkpoints_dir: !ref <save_folder>
   recoverables:
+    dacmodel: !ref <dacmodel>
     sepmodel: !ref <sepmodel>
     counter: !ref <epoch_counter>
     lr_scheduler: !ref <lr_scheduler>
