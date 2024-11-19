@@ -168,6 +168,6 @@ train_logger: !new:speechbrain.utils.train_logger.WandBLogger
   initializer: !name:wandb.init
   entity: "salmanhussainali03-concordia-university"# WandB entity or team name
   project: "IFT-4030 Project"            # WandB project name
-  name: !ref<experiment_name>      # Custom name for this run
+  name: !ref <experiment_name>      # Custom name for this run
   reinit: true                     # Reinitialize the WandB run if needed
   resume: "allow"                  # Allow resuming if the ID matches an existing run
