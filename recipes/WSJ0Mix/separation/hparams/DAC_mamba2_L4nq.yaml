@@ -169,3 +169,4 @@ train_logger: !new:speechbrain.utils.train_logger.WandBLogger
   name: !ref <experiment_name>      # Custom name for this run
   reinit: true                     # Reinitialize the WandB run if needed
   resume: "allow"                  # Allow resuming if the ID matches an existing run
+  id: !ref <experiment_name>
