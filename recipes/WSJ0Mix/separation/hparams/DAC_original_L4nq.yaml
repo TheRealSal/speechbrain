@@ -22,7 +22,7 @@ data_folder:
 # you can do this conversion with the script ../meta/preprocess_dynamic_mixing.py
 base_folder_dm: /yourpath/wsj0-processed/si_tr_s/
 
-experiment_name: codecformer/DAC_original_L4nq
+experiment_name: codecformer-base
 output_folder: !ref results/<experiment_name>/<seed>
 train_log: !ref <output_folder>/train_log.txt
 save_folder: !ref <output_folder>/save
