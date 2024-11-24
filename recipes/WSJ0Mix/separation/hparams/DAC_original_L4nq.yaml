@@ -50,7 +50,7 @@ lr: 0.00015 #0.003
 clip_grad_norm: 5
 loss_upper_lim: 999999  # this is the upper limit for an acceptable loss
 # if True, the training sequences are cut to a specified length
-limit_training_signal_len: false
+limit_training_signal_len: true
 # this is the length of sequences if we choose to limit
 # the signal length of training sequences
 training_signal_len: 40000
