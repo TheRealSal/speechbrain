@@ -22,7 +22,7 @@ data_folder:
 # you can do this conversion with the script ../meta/preprocess_dynamic_mixing.py
 base_folder_dm: /yourpath/wsj0-processed/si_tr_s/
 
-experiment_name: d-codecformer-medium
+experiment_name: d-codecformer-large
 output_folder: !ref results/<experiment_name>/<seed>
 train_log: !ref <output_folder>/train_log.txt
 save_folder: !ref <output_folder>/save
@@ -30,6 +30,10 @@ train_data: !ref <save_folder>/wsj_tr.csv
 valid_data: !ref <save_folder>/wsj_cv.csv
 test_data: !ref <save_folder>/wsj_tt.csv
 skip_prep: false
+
+# Teacher model path
+teacher_source: "speechbrain/sepformer-wsj02mix"
+teacher_save_dir: "pretrained_models/sepformer-wsj02mix"
 
 
 # Experiment params

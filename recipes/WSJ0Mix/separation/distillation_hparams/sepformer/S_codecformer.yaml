@@ -31,6 +31,9 @@ valid_data: !ref <save_folder>/wsj_cv.csv
 test_data: !ref <save_folder>/wsj_tt.csv
 skip_prep: false
 
+# Teacher model path
+teacher_source: "speechbrain/sepformer-wsj02mix"
+teacher_save_dir: "pretrained_models/sepformer-wsj02mix"
 
 # Experiment params
 auto_mix_prec: false # Set it to True for mixed precision

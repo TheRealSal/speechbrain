@@ -54,6 +54,9 @@ from speechbrain.nnet.losses import PitWrapper
 
 # Define training procedure
 class Separation(sb.Brain):
+    def __init__(self, teacher, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.teacher = teacher
     def compute_forward(self, mix, targets, stage, noise=None):
         """Forward computations from the mixture to the separated signals."""
 
@@ -93,7 +96,7 @@ class Separation(sb.Brain):
         #############################
         teacher_est_source = None
         if stage == sb.Stage.TRAIN:
-            teacher_est_source = teacher.separate_batch(mix)
+            teacher_est_source = self.teacher.separate_batch(mix)
 
         #############################
         # Run Targets Through Codec #
@@ -677,12 +680,6 @@ if __name__ == "__main__":
     # Data preparation
     from prepare_data import prepare_wsjmix  # noqa
 
-    # Load pretrained separator model
-    teacher = pre_separator.from_hparams(source="speechbrain/sepformer-wsj02mix",
-                                     savedir='pretrained_models/sepformer-wsj02mix',
-                                     run_opts={"device": "cuda"})
-    teacher.eval()
-
     run_on_main(
         prepare_wsjmix,
         kwargs={
@@ -746,13 +743,20 @@ if __name__ == "__main__":
     else:
         train_data, valid_data, test_data = dataio_prep(hparams)
 
-    # Load pretrained model if pretrained_separator is present in the yaml
-    if "pretrained_separator" in hparams:
-        run_on_main(hparams["pretrained_separator"].collect_files)
-        hparams["pretrained_separator"].load_collected()
+    # # Load pretrained model if pretrained_separator is present in the yaml
+    # if "pretrained_separator" in hparams:
+    #     run_on_main(hparams["pretrained_separator"].collect_files)
+    #     hparams["pretrained_separator"].load_collected()
+
+    # Load pretrained(teacher) separator model
+    teacher = pre_separator.from_hparams(source=hparams["teacher_source"],
+                                         savedir=hparams["teacher_save_dir"],
+                                         run_opts={"device": "cuda"})
+    teacher.eval()
 
     # Brain class initialization
     separator = Separation(
+        teacher=teacher,
         modules=hparams["modules"],
         opt_class=hparams["optimizer"],
         hparams=hparams,
