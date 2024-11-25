@@ -526,6 +526,27 @@ def dataio_prep(hparams):
     return train_data, valid_data, test_data
 
 
+def parse_yaml(path):
+    """
+        Parse and return the contents of a YAML file.
+
+        Args:
+            path (str): Path to the YAML file to be parsed.
+
+        Returns:
+            dict: A dictionary containing the parsed contents of the YAML file.
+
+        Raises:
+            FileNotFoundError: If the provided path does not point to an existing file.
+        """
+    try:
+        with open(path, 'r') as yaml_file:
+            config_dict = yaml.full_load(yaml_file)
+        return config_dict
+    except FileNotFoundError:
+        raise
+
+
 if __name__ == "__main__":
     # Load hyperparameters file with command-line overrides
     hparams_file, run_opts, overrides = sb.parse_arguments(sys.argv[1:])
@@ -636,11 +657,12 @@ if __name__ == "__main__":
         state_dict = torch.load(model_path)
 
         config_path = "/home/salmanhu/projects/def-ravanelm/salmanhu/speechbrain/recipes/WSJ0Mix/SepReformer-pretrained/configs.yaml"
-        yaml_dict = yaml.full_load(config_path)
+        yaml_dict = parse_yaml(config_path)
 
         config =yaml_dict["config"]
 
         teacher = SepReformer(**config["model"]).to("cuda")
+        teacher.load_state_dict(state_dict)
         teacher.eval()
 
     # Brain class initialization
