@@ -90,8 +90,11 @@ class Separation(sb.Brain):
             with torch.no_grad():
                 teacher_est_source = self.teacher.forward(mix)
 
-        # Separation
+        # Separation [B, num_spks, L]
         est_source = self.hparams.sepmodel(mix)
+
+        # [B, L, num_spks]
+        est_source = est_source.permute(0,2,1)
 
         return est_source, targets, teacher_est_source
 
