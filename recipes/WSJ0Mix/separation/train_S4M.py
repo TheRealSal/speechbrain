@@ -83,6 +83,8 @@ class Separation(sb.Brain):
         if stage == sb.Stage.TRAIN and self.teacher is not None:
             with torch.no_grad():
                 teacher_est_source = self.teacher.forward(mix)
+                if isinstance(teacher_est_source, list):
+                    teacher_est_source = torch.stack(teacher_est_source, dim=0)
 
         # Separation [B, num_spks, L]
         est_source = self.hparams.sepmodel(mix)
