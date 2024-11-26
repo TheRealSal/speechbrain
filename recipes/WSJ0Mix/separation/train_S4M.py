@@ -651,7 +651,7 @@ if __name__ == "__main__":
     if hparams["use_teacher"]:
         print("Using teacher")
         model_path = "/home/salmanhu/projects/def-ravanelm/salmanhu/speechbrain/recipes/WSJ0Mix/SepReformer-pretrained/epoch.0180.pth"
-        state_dict = torch.load(model_path)
+        state_dict = torch.load(model_path, map_location=torch.device('cuda'))
 
         config_path = "/home/salmanhu/projects/def-ravanelm/salmanhu/speechbrain/recipes/WSJ0Mix/SepReformer-pretrained/configs.yaml"
         yaml_dict = parse_yaml(config_path)
@@ -659,7 +659,7 @@ if __name__ == "__main__":
         config =yaml_dict["config"]
 
         teacher = SepReformer(**config["model"]).to("cuda")
-        teacher.load_state_dict(state_dict)
+        teacher.load_state_dict(state_dict["model_state_dict"])
         teacher.eval()
 
     # Brain class initialization
