@@ -26,11 +26,6 @@ Authors
 Modified by
  * Yip Jia Qi 2024
 """
-import dac
-import yaml
-
-print("dac version:", dac.__version__)
-print()
 import csv
 import logging
 import os
@@ -48,8 +43,7 @@ from speechbrain.inference.separation import SepformerSeparation as pre_separato
 import speechbrain.nnet.schedulers as schedulers
 from speechbrain.core import AMPConfig
 from speechbrain.utils.distributed import run_on_main
-from speechbrain.lobes.models import SepReformer
-from utils.decorators import *
+from speechbrain.lobes.models.SepReformer import SepReformer
 import yaml
 
 
