@@ -85,6 +85,7 @@ class Separation(sb.Brain):
                 teacher_est_source = self.teacher.forward(mix)
                 if isinstance(teacher_est_source, list):
                     teacher_est_source = torch.stack(teacher_est_source, dim=0)
+                teacher_est_source = teacher_est_source.permute(2, 0,1)
 
         # Separation [B, num_spks, L]
         est_source = self.hparams.sepmodel(mix)
