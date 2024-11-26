@@ -86,6 +86,7 @@ class Separation(sb.Brain):
                 if isinstance(teacher_est_source, list):
                     teacher_est_source = torch.stack(teacher_est_source, dim=0)
                 teacher_est_source = teacher_est_source.permute(1,2,0)
+                teacher_est_source = self.pad_reconstructed_signal(mix, teacher_est_source)
 
         # Separation [B, num_spks, L]
         est_source = self.hparams.sepmodel(mix)
@@ -460,6 +461,31 @@ class Separation(sb.Brain):
         torchaudio.save(
             save_file, signal.unsqueeze(0).cpu(), self.hparams.sample_rate
         )
+
+    def pad_reconstructed_signal(self, mix, est_source):
+        """
+        Pads or trims the estimated source to match the length of the original mixture.
+
+        Args:
+            mix (torch.Tensor): Original mixture signal of shape (batch_size, T_origin, ...).
+            est_source (torch.Tensor): Estimated source signal of shape (batch_size, T_est, ...).
+
+        Returns:
+            torch.Tensor: Estimated source signal padded or trimmed to match T_origin.
+        """
+        T_origin = mix.size(1)
+        T_est = est_source.size(1)
+
+        if T_origin > T_est:
+            # Pad the second dimension (time dimension) of `est_source`
+            pad_amount = T_origin - T_est
+            est_source = F.pad(est_source,
+                               (0, 0, 0, pad_amount))  # (last_dim_right, last_dim_left, time_right, time_left)
+        elif T_origin < T_est:
+            # Trim the second dimension (time dimension) of `est_source`
+            est_source = est_source[:, :T_origin, :]
+
+        return est_source
 
 
 def dataio_prep(hparams):
