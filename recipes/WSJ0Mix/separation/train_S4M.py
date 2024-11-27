@@ -98,8 +98,8 @@ class S4MBrain(sb.Brain):
 
     def infer(self, mix):
         with torch.no_grad():
-            mix, mix_lens = mix
-            mix, mix_lens = mix.to(self.device), mix_lens.to(self.device)
+            mix = mix
+            mix = mix.to(self.device)
 
             # Separation [B, num_spks, L]
             est_source = self.hparams.sepmodel(mix)

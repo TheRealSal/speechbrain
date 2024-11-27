@@ -157,8 +157,8 @@ class CodecformerBrain(sb.Brain):
     def infer(self, mix):
         # Unpack lists and put tensors in the right device
         with torch.no_grad():
-            mix, mix_lens = mix
-            mix, mix_lens = mix.to(self.device), mix_lens.to(self.device)
+            mix
+            mix = mix.to(self.device)
 
             # Send the dac model to device
             self.hparams.dacmodel.model.to(self.device)
