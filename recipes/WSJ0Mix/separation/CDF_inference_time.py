@@ -73,6 +73,6 @@ if __name__ == '__main__':
     plt.grid()
 
     # Save the plot to a file
-    output_path = hparams["output_folder"] + "cdf_inference_time_vs_audio_length.png"  # Customize the path as needed
+    output_path = hparams["output_folder"] + "/cdf_inference_time_vs_audio_length.png"  # Customize the path as needed
     plt.savefig(output_path, dpi=300, bbox_inches="tight")  # High-quality PNG
     print(f"Plot saved to {output_path}")
