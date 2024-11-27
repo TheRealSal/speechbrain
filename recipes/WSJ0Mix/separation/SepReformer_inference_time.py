@@ -12,7 +12,7 @@ from speechbrain.utils.distributed import run_on_main
 from train_cdf import CodecformerBrain
 import time
 import matplotlib.pyplot as plt
-from speechbrain.lobes.models import SepReformer
+from speechbrain.lobes.models.SepReformer import SepReformer
 import yaml
 
 def parse_yaml(path):
