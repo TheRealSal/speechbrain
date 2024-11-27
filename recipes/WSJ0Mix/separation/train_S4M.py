@@ -48,8 +48,8 @@ import yaml
 
 
 # Define training procedure
-class Separation(sb.Brain):
-    def __init__(self, teacher, *args, **kwargs):
+class S4MBrain(sb.Brain):
+    def __init__(self, teacher=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.teacher = teacher
     def compute_forward(self, mix, targets, stage, noise=None):
@@ -692,7 +692,7 @@ if __name__ == "__main__":
         teacher.eval()
 
     # Brain class initialization
-    separator = Separation(
+    separator = S4MBrain(
         teacher=teacher,
         modules=hparams["modules"],
         opt_class=hparams["optimizer"],

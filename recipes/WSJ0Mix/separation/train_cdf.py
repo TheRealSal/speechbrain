@@ -51,7 +51,7 @@ from speechbrain.nnet.losses import PitWrapper
 
 
 # Define training procedure
-class Separation(sb.Brain):
+class CodecformerBrain(sb.Brain):
     def compute_forward(self, mix, targets, stage, noise=None):
         """Forward computations from the mixture to the separated signals."""
 
@@ -725,7 +725,7 @@ if __name__ == "__main__":
         hparams["pretrained_separator"].load_collected()
 
     # Brain class initialization
-    separator = Separation(
+    separator = CodecformerBrain(
         modules=hparams["modules"],
         opt_class=hparams["optimizer"],
         hparams=hparams,
