@@ -77,10 +77,9 @@ if __name__ == '__main__':
     # Plot the results
     plt.figure(figsize=(10, 6))
     plt.plot(audio_lengths_sec, inference_times, marker='o')
-    plt.title("CDF Inference Time vs. Audio Length")
+    plt.title("Codecformer Inference Time vs. Audio Length")
     plt.xlabel("Audio Length (seconds)")
     plt.ylabel("Inference Time (ms)")
-    plt.grid()
 
     # Save the plot to a file
     output_path = hparams["output_folder"] + "/cdf_inference_time_vs_audio_length.png"  # Customize the path as needed

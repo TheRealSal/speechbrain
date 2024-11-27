@@ -81,7 +81,6 @@ if __name__ == '__main__':
     plt.title("S4M Inference Time vs. Audio Length")
     plt.xlabel("Audio Length (seconds)")
     plt.ylabel("Inference Time (ms)")
-    plt.grid()
 
     # Save the plot to a file
     output_path = hparams["output_folder"] + "/s4m_inference_time_vs_audio_length.png"  # Customize the path as needed
