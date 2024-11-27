@@ -61,8 +61,8 @@ if __name__ == '__main__':
     with torch.no_grad():
         for length in audio_lengths_sec:
             input_length = int(length * sample_rate)  # Convert seconds to samples
-            audio_input = torch.randn(1, input_length)  # Simulate 1-channel audio input
-            dummy_targets = torch.randn(1, input_length, 2)
+            audio_input = torch.randn(1, input_length).to(teacher.device)  # Simulate 1-channel audio input
+            dummy_targets = torch.randn(1, input_length, 2).to(teacher.device)
 
             # Warm-up
             _ = teacher.forward(audio_input)
