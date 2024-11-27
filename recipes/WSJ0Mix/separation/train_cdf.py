@@ -154,6 +154,50 @@ class CodecformerBrain(sb.Brain):
         
         return est_source, targets, targets_transmitted, mix_s, targ_w, mix_sq, targ_q, mix_sq_codes, targ_q_codes
 
+    def infer(self, mix):
+        # Unpack lists and put tensors in the right device
+        with torch.no_grad():
+            mix, mix_lens = mix
+            mix, mix_lens = mix.to(self.device), mix_lens.to(self.device)
+
+            # Send the dac model to device
+            self.hparams.dacmodel.model.to(self.device)
+            self.hparams.dacmodel.dac_sampler.to(self.device)
+            self.hparams.dacmodel.org_sampler.to(self.device)
+
+            mix_w, mix_length = self.hparams.dacmodel.get_encoded_features(mix.unsqueeze(1))
+
+            if self.hparams.quantize_before:
+                mix_w = self.hparams.dacmodel.get_quantized_features(mix_w)[0]
+
+            est_mask = self.hparams.sepmodel(mix_w)
+            mix_w = torch.stack([mix_w] * self.hparams.num_spks)
+            mix_s = mix_w * est_mask
+            # mix_s = est_mask
+
+            if self.hparams.quantize_after:
+                mix_qs = [self.hparams.dacmodel.get_quantized_features(mix_s[i]) for i in range(self.hparams.num_spks)]
+
+                mix_sq = torch.cat([item[0].unsqueeze(0) for item in mix_qs], dim=0)  # [spks, B, N, L]
+                mix_sq_codes = torch.cat([item[1].unsqueeze(0) for item in mix_qs], dim=0)
+            else:
+                mix_sq = mix_s
+                mix_sq_codes = 0
+
+            est_source = torch.cat(
+                [
+                    self.hparams.dacmodel.get_decoded_signal(mix_sq[i], mix_length).unsqueeze(0)
+                    for i in range(self.hparams.num_spks)
+                ],
+                dim=0,
+            )
+
+            # output is currently [Speakers, Batch, channels, Time]
+            est_source = est_source.squeeze(2).permute(1, 2, 0)
+            # final est_source needs to be [Batch, Time, Speakers]
+
+            return est_source, mix_s, mix_sq, mix_sq_codes
+
     def compute_objectives(self, predictions, targets, mix_s, targ_w, mix_sq, targ_q, mix_sq_codes, targ_q_codes, stage):
         """Computes the sinr loss""" 
         if stage == sb.Stage.TRAIN:

@@ -96,6 +96,19 @@ class S4MBrain(sb.Brain):
 
         return est_source, targets, teacher_est_source
 
+    def infer(self, mix):
+        with torch.no_grad():
+            mix, mix_lens = mix
+            mix, mix_lens = mix.to(self.device), mix_lens.to(self.device)
+
+            # Separation [B, num_spks, L]
+            est_source = self.hparams.sepmodel(mix)
+
+            # [B, L, num_spks]
+            est_source = est_source.permute(0, 2, 1)
+
+            return est_source
+
     def compute_objectives(self, predictions, targets, teacher_predictions=None):
         """Computes the sinr loss"""
         #Add teacher loss
