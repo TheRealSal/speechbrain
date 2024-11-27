@@ -53,14 +53,24 @@ if __name__ == '__main__':
             audio_input = torch.randn(1, input_length)  # Simulate 1-channel audio input
             dummy_targets = torch.randn(1, input_length, 2)
 
-            # Measure time for forward pass
-            torch.cuda.synchronize()
-            start_time = time.time()
+            # Warm-up
             _ = cdf.infer(audio_input)
-            end_time = time.time()
             torch.cuda.synchronize()
 
-            elapsed_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+            # Measure time for forward pass
+            torch.cuda.synchronize()
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+
+            # start_time = time.time()
+            start_event.record()
+            _ = cdf.infer(audio_input)
+            end_event.record()
+            # end_time = time.time()
+            torch.cuda.synchronize()
+
+            # elapsed_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+            elapsed_time_ms = start_event.elapsed_time(end_event)
             inference_times.append(elapsed_time_ms)
             print(f"Audio Length: {length:.2f}s, Inference Time: {elapsed_time_ms:.2f}ms")
 
