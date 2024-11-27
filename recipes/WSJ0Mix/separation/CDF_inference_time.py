@@ -57,8 +57,8 @@ if __name__ == '__main__':
             torch.cuda.synchronize()
             start_time = time.time()
             _ = cdf.infer(audio_input)
-            torch.cuda.synchronize()
             end_time = time.time()
+            torch.cuda.synchronize()
 
             elapsed_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
             inference_times.append(elapsed_time_ms)

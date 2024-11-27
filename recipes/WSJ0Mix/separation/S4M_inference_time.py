@@ -55,9 +55,11 @@ if __name__ == '__main__':
             dummy_targets = torch.randn(1, input_length, 2)
 
             # Measure time for forward pass
+            torch.cuda.synchronize()
             start_time = time.time()
             _ = s4m.infer(audio_input)
             end_time = time.time()
+            torch.cuda.synchronize()
 
             elapsed_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
             inference_times.append(elapsed_time_ms)
