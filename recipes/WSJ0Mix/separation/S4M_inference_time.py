@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
 
     sample_rate = 8000
-    audio_lengths_sec = torch.linspace(0.3, 32, steps=50)
+    audio_lengths_sec = torch.linspace(0.3, 16, steps=40)
 
     inference_times = []
 
