@@ -16,6 +16,8 @@ from speechbrain.nnet.activations import Swish
 from speechbrain.utils import checkpoints
 from transformers.models.whisper.modeling_whisper import WhisperAttention, MLPWrapper
 
+from mamba_ssm import Mamba
+
 MHA_WARNING = """
 Torch's native multi-head attention is not adaptable since it accesses layer
 weights directly to pass to highly optimized fused kernels. We are excluding
@@ -322,6 +324,71 @@ class HoulsbyAdapterLinear(nn.Module):
             + x_pretrained
         )
 
+
+class S4A(nn.Module):
+    adapter_down_proj = None
+    adapter_up_proj = None
+
+    def __init__(self, target_linear, projection_size, mamba_config, activation=Swish, bias=True):
+        super().__init__(target_linear, projection_size, activation, bias)
+
+        if isinstance(target_linear, WhisperAttention):
+            output_size = target_linear.embed_dim
+            device = target_linear.out_proj.weight.device
+        elif isinstance(target_linear, MLPWrapper):
+            output_size = target_linear.out_features
+            device = target_linear.fc1.weight.device
+        else:
+            output_size = target_linear.weight.data.shape[0]
+            device = target_linear.weight.device
+
+        self.pretrained_linear = target_linear
+        self.pretrained_linear.requires_grad = False
+
+        if S4A.adapter_down_proj is None:
+            S4A.adapter_down_proj = nn.Linear(
+                output_size, projection_size, bias=bias, device=device
+            )
+        if S4A.adapter_up_proj is None:
+            S4A.adapter_up_proj = nn.Linear(
+                projection_size, output_size, bias=bias, device=device
+            )
+
+        self.adapter_down_proj = S4A.adapter_down_proj
+        self.adapter_up_proj = S4A.adapter_up_proj
+
+        self.activation = activation()
+
+        global causal_conv1d_fn
+        causal_conv1d_fn = None  # This disables causal_conv1d
+
+        self.mamba = Mamba(
+            d_model=projection_size,
+            d_state=8,
+            d_conv=24,
+            expand=2,
+        ).to("cuda")
+
+    def forward(self, x: torch.Tensor):
+        """Applies the HoulsbyAdapter to an input tensor `x`.
+
+                Arguments
+                ---------
+                x: torch.Tensor
+                    Input tensor to the adapter module. Shape: [B, Time, X]
+
+                Returns
+                -------
+                The linear outputs
+                """
+        x_pretrained = self.pretrained_linear(x)
+
+        return (
+                self.adapter_up_proj(
+                    self.mamba(self.adapter_down_proj(x))
+                )
+                + x_pretrained
+        )
 
 class LoRA(nn.Module):
     """This class implements the LoRA Adapter as described in:
