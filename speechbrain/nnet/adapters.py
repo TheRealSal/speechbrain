@@ -14,6 +14,7 @@ import torch.nn as nn
 
 from speechbrain.nnet.activations import Swish
 from speechbrain.utils import checkpoints
+from transformers.models.whisper.modeling_whisper import WhisperAttention, MLPWrapper
 
 MHA_WARNING = """
 Torch's native multi-head attention is not adaptable since it accesses layer
@@ -275,14 +276,15 @@ class HoulsbyAdapterLinear(nn.Module):
     ):
         super().__init__()
 
-        if not isinstance(target_linear, nn.Linear):
-            raise ValueError(
-                "HoulsbyLinear currently only supports linear layers, "
-                f"but instead got {type(target_linear)}."
-            )
-
-        output_size = target_linear.weight.data.shape[0]
-        device = target_linear.weight.device
+        if isinstance(target_linear, WhisperAttention):
+            output_size = target_linear.embed_dim
+            device = target_linear.out_proj.weight.device
+        elif isinstance(target_linear, MLPWrapper):
+            output_size = target_linear.out_features
+            device = target_linear.fc1.weight.device
+        else:
+            output_size = target_linear.weight.data.shape[0]
+            device = target_linear.weight.device
 
         self.pretrained_linear = target_linear
         self.pretrained_linear.requires_grad = False
