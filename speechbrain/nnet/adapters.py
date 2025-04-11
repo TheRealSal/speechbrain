@@ -329,9 +329,26 @@ class S4A(nn.Module):
     adapter_down_proj = None
     adapter_up_proj = None
 
-    def __init__(self, target_linear, projection_size, mamba_config, activation=Swish, bias=True):
-        super().__init__(target_linear, projection_size, activation, bias)
-
+    def __init__(
+        self,
+        target_linear,
+        projection_size,
+        activation=Swish,
+        bias=True,
+        alpha_init: float = 1.0,
+        learn_alpha: bool = False,
+    ):
+        """
+        Args:
+            target_linear: the original linear/attention/MLP module
+            projection_size: bottleneck dimension
+            mamba_config: unused here currently
+            activation: nonlinearity class
+            bias: whether to use bias in adapter projections
+            alpha_init: initial value for the scaling factor α
+            learn_alpha: if True, α is a learnable parameter; otherwise it's fixed
+        """
+        super().__init__()
         if isinstance(target_linear, WhisperAttention):
             output_size = target_linear.embed_dim
             device = target_linear.out_proj.weight.device
@@ -343,52 +360,36 @@ class S4A(nn.Module):
             device = target_linear.weight.device
 
         self.pretrained_linear = target_linear
-        self.pretrained_linear.requires_grad = False
+        self.pretrained_linear.requires_grad_(False)
 
         if S4A.adapter_down_proj is None:
-            S4A.adapter_down_proj = nn.Linear(
-                output_size, projection_size, bias=bias, device=device
-            )
+            S4A.adapter_down_proj = nn.Linear(output_size, projection_size, bias=bias, device=device)
         if S4A.adapter_up_proj is None:
-            S4A.adapter_up_proj = nn.Linear(
-                projection_size, output_size, bias=bias, device=device
-            )
+            S4A.adapter_up_proj = nn.Linear(projection_size, output_size, bias=bias, device=device)
 
         self.adapter_down_proj = S4A.adapter_down_proj
         self.adapter_up_proj = S4A.adapter_up_proj
-
         self.activation = activation()
 
-        global causal_conv1d_fn
-        causal_conv1d_fn = None  # This disables causal_conv1d
+        self.mamba = nn.Linear(projection_size, projection_size, bias=bias)
 
-        self.mamba = Mamba(
-            d_model=projection_size,
-            d_state=8,
-            d_conv=24,
-            expand=2,
-        ).to("cuda")
+        if learn_alpha:
+            self.alpha = nn.Parameter(torch.tensor(alpha_init, device=device))
+        else:
+            self.register_buffer("alpha", torch.tensor(alpha_init, device=device))
 
     def forward(self, x: torch.Tensor):
-        """Applies the HoulsbyAdapter to an input tensor `x`.
-
-                Arguments
-                ---------
-                x: torch.Tensor
-                    Input tensor to the adapter module. Shape: [B, Time, X]
-
-                Returns
-                -------
-                The linear outputs
-                """
+        # 1) original output
         x_pretrained = self.pretrained_linear(x)
 
-        return (
-                self.adapter_up_proj(
-                    self.mamba(self.adapter_down_proj(x))
-                )
-                + x_pretrained
-        )
+        # 2) adapter path
+        z = self.adapter_down_proj(x)
+        z = self.activation(z)
+        z = self.mamba(z)
+        z = self.adapter_up_proj(z)
+
+        # 3) scale and add to original output
+        return x_pretrained + self.alpha * z
 
 class LoRA(nn.Module):
     """This class implements the LoRA Adapter as described in:
