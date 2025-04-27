@@ -319,9 +319,113 @@ class HoulsbyAdapterLinear(nn.Module):
 
         return (
             self.adapter_up_proj(
-                self.activation(self.adapter_down_proj(x_pretrained))
+                self.activation(self.adapter_down_proj(x))
             )
             + x_pretrained
+        )
+
+
+class Conformer(nn.Module):
+    """This class implements the Houlsby Adapter as described in:
+    'Parameter-Efficient Transfer Learning for NLP'
+    https://arxiv.org/abs/1902.00751
+
+    Arguments
+    ---------
+    target_linear: nn.Module
+        Module corresponding to the pretrained Linear that will be wrapped with
+        this adapter.
+    projection_size: int
+        Size of the projection layer (usually smaller).
+    activation: nn.Module
+        The activation function. Default is Swish.
+    bias: bool
+        Whether to use biases in the linear projections.
+
+    Example
+    -------
+    >>> import torch
+    >>> x = torch.rand((8, 60, 64))
+    >>> base_linear = nn.Linear(64, 64)
+    >>> adapt = HoulsbyAdapterLinear(base_linear, 8)
+    >>> output = adapt(x)
+    >>> output.shape
+    torch.Size([8, 60, 64])
+    """
+
+    def __init__(
+        self,
+        target_linear,
+        projection_size,
+        activation=Swish,
+        bias=True,
+    ):
+        super().__init__()
+
+        if isinstance(target_linear, WhisperAttention):
+            output_size = target_linear.embed_dim
+            device = target_linear.out_proj.weight.device
+        elif isinstance(target_linear, MLPWrapper):
+            output_size = target_linear.out_features
+            device = target_linear.fc1.weight.device
+        else:
+            output_size = target_linear.weight.data.shape[0]
+            device = target_linear.weight.device
+
+        self.pretrained_linear = target_linear
+        self.pretrained_linear.requires_grad = False
+
+        self.lnorm = nn.LayerNorm(normalized_shape=output_size, device=device)
+        self.pwise_conv1 = nn.Conv1d(
+            in_channels=output_size, out_channels=projection_size * 2, kernel_size=1, device=device
+        )
+
+        # self.pwise_conv1 = nn.Linear(in_dim,bottleneck_dim*2)
+        self.act1 = nn.GLU(dim=1)
+        self.dwise_conv = nn.Conv1d(
+            in_channels=projection_size,
+            out_channels=projection_size,
+            kernel_size=31,
+            groups=projection_size,
+            padding="same",
+            device = device
+        )
+        self.bnorm = nn.BatchNorm1d(num_features=projection_size, device=device)
+        self.act2 = nn.SiLU()
+        self.pwise_conv2 = nn.Conv1d(
+            in_channels=projection_size, out_channels=output_size, kernel_size=1, device=device
+        )
+
+        self.dropout = nn.Dropout(0)
+
+    def forward(self, x: torch.Tensor):
+        """Applies the HoulsbyAdapter to an input tensor `x`.
+
+        Arguments
+        ---------
+        x: torch.Tensor
+            Input tensor to the adapter module. Shape: [B, Time, X]
+
+        Returns
+        -------
+        The linear outputs
+        """
+
+        x_pretrained = self.pretrained_linear(x)
+
+        adapter_out = self.lnorm(x)
+        adapter_out = x.transpose(-1, -2)
+        adapter_out = self.pwise_conv1(adapter_out)  # [B, 2d, M]
+        adapter_out = self.act1(adapter_out)  # [B, d, M]
+        adapter_out = self.dwise_conv(adapter_out)
+        adapter_out = self.bnorm(adapter_out)
+        adapter_out = self.act2(adapter_out)
+        adapter_out = self.pwise_conv2(adapter_out)
+        adapter_out = self.dropout(adapter_out)
+        adapter_out = adapter_out.transpose(-1, -2)  # [B, M, d]
+
+        return (
+            adapter_out + x_pretrained
         )
 
 
