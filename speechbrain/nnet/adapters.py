@@ -437,6 +437,7 @@ class S4A(nn.Module):
         self,
         target_linear,
         projection_size,
+        kernel_size=24,
         activation=Swish,
         bias=True,
         alpha_init: float = 1.0,
@@ -475,7 +476,10 @@ class S4A(nn.Module):
         self.adapter_up_proj = S4A.adapter_up_proj
         self.activation = activation()
 
-        self.mamba = nn.Linear(projection_size, projection_size, bias=bias)
+        self.mamba = Mamba(d_model=projection_size,
+                           d_state=16,
+                           d_conv=kernel_size,
+                           expand=2).to("cuda")
 
         if learn_alpha:
             self.alpha = nn.Parameter(torch.tensor(alpha_init, device=device))
