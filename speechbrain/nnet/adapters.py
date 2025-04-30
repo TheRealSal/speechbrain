@@ -477,7 +477,7 @@ class S4A(nn.Module):
         self.activation = activation()
 
         self.mamba = Mamba(d_model=projection_size,
-                           d_state=16,
+                           d_state=8,
                            d_conv=kernel_size,
                            expand=2).to("cuda")
 
