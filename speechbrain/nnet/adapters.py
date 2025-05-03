@@ -430,8 +430,11 @@ class Conformer(nn.Module):
 
 
 class S4A(nn.Module):
-    adapter_down_proj = None
-    adapter_up_proj = None
+    encoder_adapter_down_proj = None
+    encoder_adapter_up_proj = None
+
+    decoder_adapter_down_proj = None
+    decoder_adapter_up_proj = None
 
     def __init__(
         self,
@@ -454,12 +457,14 @@ class S4A(nn.Module):
             learn_alpha: if True, α is a learnable parameter; otherwise it's fixed
         """
         super().__init__()
+        self.location = ""
         if isinstance(target_linear, WhisperAttention):
             output_size = target_linear.embed_dim
             device = target_linear.out_proj.weight.device
         elif isinstance(target_linear, MLPWrapper):
             output_size = target_linear.out_features
             device = target_linear.fc1.weight.device
+            self.location = f"mlp_{target_linear.location}"
         else:
             output_size = target_linear.weight.data.shape[0]
             device = target_linear.weight.device
@@ -467,13 +472,17 @@ class S4A(nn.Module):
         self.pretrained_linear = target_linear
         self.pretrained_linear.requires_grad_(False)
 
-        if S4A.adapter_down_proj is None:
-            S4A.adapter_down_proj = nn.Linear(output_size, projection_size, bias=bias, device=device)
-        if S4A.adapter_up_proj is None:
-            S4A.adapter_up_proj = nn.Linear(projection_size, output_size, bias=bias, device=device)
+        if self.location == "mlp_encoder":
+            if S4A.encoder_adapter_down_proj is None:
+                S4A.encoder_adapter_down_proj = nn.Linear(output_size, projection_size, bias=bias, device=device)
+            if S4A.encoder_adapter_up_proj is None:
+                S4A.encoder_adapter_up_proj = nn.Linear(projection_size, output_size, bias=bias, device=device)
+        elif self.location == "mlp_decoder":
+            if S4A.decoder_adapter_down_proj is None:
+                S4A.decoder_adapter_down_proj = nn.Linear(output_size, projection_size, bias=bias, device=device)
+            if S4A.decoder_adapter_up_proj is None:
+                S4A.decoder_adapter_up_proj = nn.Linear(projection_size, output_size, bias=bias, device=device)
 
-        self.adapter_down_proj = S4A.adapter_down_proj
-        self.adapter_up_proj = S4A.adapter_up_proj
         self.activation = activation()
 
         self.mamba = Mamba(d_model=projection_size,
