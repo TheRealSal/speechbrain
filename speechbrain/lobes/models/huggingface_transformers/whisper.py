@@ -95,6 +95,7 @@ class Whisper(HFTransformersInterface):
         encoder_only=False,
         freeze=False,
         freeze_encoder=False,
+        freeze_decoder=False,
         output_attentions=False,
         output_all_hiddens=False,
         language=None,
@@ -104,6 +105,7 @@ class Whisper(HFTransformersInterface):
         self.sampling_rate = sampling_rate
         self.encoder_only = encoder_only
         self.freeze_encoder = freeze_encoder
+        self.freeze_decoder = freeze_decoder
         self.output_attentions = output_attentions
         self.output_all_hiddens = output_all_hiddens
         self.language = language
@@ -162,6 +164,13 @@ class Whisper(HFTransformersInterface):
                 "speechbrain.lobes.models.huggingface_transformers.whisper - whisper encoder is frozen."
             )
             for param in self.model.encoder.parameters():
+                param.requires_grad = False
+
+        if not self.freeze and self.freeze_decoder:
+            logger.warning(
+                "speechbrain.lobes.models.huggingface_transformers.whisper - whisper decoder is frozen."
+            )
+            for param in self.model.decoder.parameters():
                 param.requires_grad = False
 
     def freeze_model(self, model):
