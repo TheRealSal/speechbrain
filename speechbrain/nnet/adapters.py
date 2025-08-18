@@ -5,7 +5,7 @@ Authors
  * Titouan Parcollet 2024
  * Peter Plantinga 2024
 """
-
+import math
 import warnings
 from fnmatch import fnmatch
 
@@ -275,6 +275,7 @@ class HoulsbyAdapterLinear(nn.Module):
         projection_size,
         activation=Swish,
         bias=True,
+        zero_init=False,
     ):
         super().__init__()
 
@@ -301,6 +302,16 @@ class HoulsbyAdapterLinear(nn.Module):
         if bias:
             self.adapter_down_proj.bias.data.fill_(0.0)
             self.adapter_up_proj.bias.data.fill_(0.0)
+
+        with torch.no_grad():
+            if zero_init:
+                self.adapter_up_proj.weight.zero_()
+                if bias:
+                    self.adapter_up_proj.bias.zero_()
+                nn.init.kaiming_uniform_(self.adapter_down_proj.weight, a=math.sqrt(5))
+            else:
+                nn.init.xavier_uniform_(self.adapter_down_proj.weight)
+                nn.init.xavier_uniform_(self.adapter_up_proj.weight)
 
     def forward(self, x: torch.Tensor):
         """Applies the HoulsbyAdapter to an input tensor `x`.
