@@ -368,6 +368,7 @@ class Conformer(nn.Module):
         self,
         target_linear,
         projection_size,
+        kernel_size=31,
         activation=Swish,
         bias=True,
     ):
@@ -396,7 +397,7 @@ class Conformer(nn.Module):
         self.dwise_conv = nn.Conv1d(
             in_channels=projection_size,
             out_channels=projection_size,
-            kernel_size=31,
+            kernel_size=kernel_size,
             groups=projection_size,
             padding="same",
             device = device
