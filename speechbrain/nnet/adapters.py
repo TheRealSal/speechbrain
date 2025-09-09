@@ -371,6 +371,7 @@ class Conformer(nn.Module):
         kernel_size=31,
         activation=Swish,
         bias=True,
+        zero_init=False,
     ):
         super().__init__()
 
@@ -387,12 +388,10 @@ class Conformer(nn.Module):
         self.pretrained_linear = target_linear
         self.pretrained_linear.requires_grad = False
 
-        self.lnorm = nn.LayerNorm(normalized_shape=output_size, device=device)
         self.pwise_conv1 = nn.Conv1d(
             in_channels=output_size, out_channels=projection_size * 2, kernel_size=1, device=device
         )
 
-        # self.pwise_conv1 = nn.Linear(in_dim,bottleneck_dim*2)
         self.act1 = nn.GLU(dim=1)
         self.dwise_conv = nn.Conv1d(
             in_channels=projection_size,
@@ -410,6 +409,22 @@ class Conformer(nn.Module):
 
         self.dropout = nn.Dropout(0)
 
+        with torch.no_grad():
+            nn.init.xavier_uniform_(self.pwise_conv1.weight)
+            if self.pwise_conv1.bias is not None:
+                self.pwise_conv1.bias.zero_()
+
+            nn.init.kaiming_uniform_(self.dwise_conv.weight, a=math.sqrt(5))
+            if self.dwise_conv.bias is not None:
+                self.dwise_conv.bias.zero_()
+
+            self.bnorm.weight.fill_(1.0)
+            self.bnorm.bias.zero_()
+            if zero_init:
+                self.pwise_conv2.weight.zero_()
+                if self.pwise_conv2.bias is not None:
+                    self.pwise_conv2.bias.zero_()
+
     def forward(self, x: torch.Tensor):
         """Applies the HoulsbyAdapter to an input tensor `x`.
 
@@ -425,7 +440,6 @@ class Conformer(nn.Module):
 
         x_pretrained = self.pretrained_linear(x)
 
-        adapter_out = self.lnorm(x)
         adapter_out = x.transpose(-1, -2)
         adapter_out = self.pwise_conv1(adapter_out)  # [B, 2d, M]
         adapter_out = self.act1(adapter_out)  # [B, d, M]
@@ -457,6 +471,8 @@ class S4A(nn.Module):
         bias=True,
         alpha_init: float = 1.0,
         learn_alpha: bool = False,
+        zero_init=False,
+        kaiming_init=False
     ):
         """
         Args:
@@ -508,6 +524,16 @@ class S4A(nn.Module):
             self.alpha = nn.Parameter(torch.tensor(alpha_init, device=device))
         else:
             self.register_buffer("alpha", torch.tensor(alpha_init, device=device))
+
+        with torch.no_grad():
+            if zero_init:
+                self.adapter_up_proj.weight.zero_()
+                if bias:
+                    self.adapter_up_proj.bias.zero_()
+                nn.init.kaiming_uniform_(self.adapter_down_proj.weight, a=math.sqrt(5))
+            else:
+                nn.init.xavier_uniform_(self.adapter_down_proj.weight)
+                nn.init.xavier_uniform_(self.adapter_up_proj.weight)
 
     def forward(self, x: torch.Tensor):
         # 1) original output
