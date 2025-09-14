@@ -486,6 +486,7 @@ class S4A(nn.Module):
             projection_size,
             kernel_size=24,
             d_state=8,
+            expand=2,
             activation=Swish,
             bias=True,
             alpha_init: float = 1.0,
@@ -519,7 +520,7 @@ class S4A(nn.Module):
             d_model=projection_size,
             d_state=d_state,
             d_conv=kernel_size,
-            expand=2
+            expand=expand
         ).to(device)
 
         self.activation = activation()
