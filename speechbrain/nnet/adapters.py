@@ -15,6 +15,7 @@ import torch.nn as nn
 from speechbrain.nnet.activations import Swish
 from speechbrain.utils import checkpoints
 from transformers.models.whisper.modeling_whisper import WhisperAttention, MLPWrapper
+import threading
 
 from mamba_ssm import Mamba
 
@@ -456,98 +457,133 @@ class Conformer(nn.Module):
 
 
 class S4A(nn.Module):
-    encoder_adapter_down_proj = None
-    encoder_adapter_up_proj = None
+    _shared_params = {}
+    _creation_lock = threading.Lock()
 
-    decoder_adapter_down_proj = None
-    decoder_adapter_up_proj = None
+    @classmethod
+    def get_or_create_shared_params(cls, component_type, output_size, projection_size, device, bias=True):
+        param_key = f"{component_type}_{output_size}_{projection_size}_{device}"
+
+        if param_key not in cls._shared_params:
+            with cls._creation_lock:
+                # Double-check pattern to avoid race conditions
+                if param_key not in cls._shared_params:
+                    cls._shared_params[param_key] = {
+                        'down': nn.Linear(output_size, projection_size, bias=bias, device=device),
+                        'up': nn.Linear(projection_size, output_size, bias=bias, device=device)
+                    }
+
+        return cls._shared_params[param_key]['down'], cls._shared_params[param_key]['up']
+
+    @classmethod
+    def clear_shared_params(cls):
+        """Clear shared parameters - useful for testing or memory cleanup."""
+        cls._shared_params.clear()
 
     def __init__(
-        self,
-        target_linear,
-        projection_size,
-        kernel_size=24,
-        d_state=8,
-        activation=Swish,
-        bias=True,
-        alpha_init: float = 1.0,
-        learn_alpha: bool = False,
-        zero_init=False,
-        kaiming_init=False
+            self,
+            target_linear,
+            projection_size,
+            kernel_size=24,
+            d_state=8,
+            activation=Swish,
+            bias=True,
+            alpha_init: float = 1.0,
+            learn_alpha: bool = False,
+            zero_init=False,
+            kaiming_init=False
     ):
-        """
-        Args:
-            target_linear: the original linear/attention/MLP module
-            projection_size: bottleneck dimension
-            mamba_config: unused here currently
-            activation: nonlinearity class
-            bias: whether to use bias in adapter projections
-            alpha_init: initial value for the scaling factor α
-            learn_alpha: if True, α is a learnable parameter; otherwise it's fixed
-        """
         super().__init__()
-        self.location = ""
+
         if isinstance(target_linear, WhisperAttention):
             output_size = target_linear.embed_dim
             device = target_linear.out_proj.weight.device
+            self.component_type = "attention"
         elif isinstance(target_linear, MLPWrapper):
             output_size = target_linear.out_features
             device = target_linear.fc1.weight.device
-            self.location = f"mlp_{target_linear.location}"
+            self.component_type = f"mlp_{target_linear.location}"
         else:
             output_size = target_linear.weight.data.shape[0]
             device = target_linear.weight.device
+            self.component_type = "linear"
 
         self.pretrained_linear = target_linear
         self.pretrained_linear.requires_grad_(False)
 
-        if self.location == "mlp_encoder":
-            if S4A.encoder_adapter_down_proj is None and S4A.encoder_adapter_up_proj is None:
-                S4A.encoder_adapter_down_proj = nn.Linear(output_size, projection_size, bias=bias, device=device)
-                S4A.encoder_adapter_up_proj = nn.Linear(projection_size, output_size, bias=bias, device=device)
-            self.adapter_down_proj = S4A.encoder_adapter_down_proj
-            self.adapter_up_proj = S4A.encoder_adapter_up_proj
-        elif self.location == "mlp_decoder":
-            if S4A.decoder_adapter_down_proj is None and S4A.decoder_adapter_up_proj is None:
-                S4A.decoder_adapter_down_proj = nn.Linear(output_size, projection_size, bias=bias, device=device)
-                S4A.decoder_adapter_up_proj = nn.Linear(projection_size, output_size, bias=bias, device=device)
-            self.adapter_down_proj = S4A.decoder_adapter_down_proj
-            self.adapter_up_proj = S4A.decoder_adapter_up_proj
+        self.adapter_down_proj, self.adapter_up_proj = self.get_or_create_shared_params(
+            self.component_type, output_size, projection_size, device, bias
+        )
+
+        self.mamba = Mamba(
+            d_model=projection_size,
+            d_state=d_state,
+            d_conv=kernel_size,
+            expand=2
+        ).to(device)
 
         self.activation = activation()
-
-        self.mamba = Mamba(d_model=projection_size,
-                           d_state=d_state,
-                           d_conv=kernel_size,
-                           expand=2).to("cuda")
 
         if learn_alpha:
             self.alpha = nn.Parameter(torch.tensor(alpha_init, device=device))
         else:
             self.register_buffer("alpha", torch.tensor(alpha_init, device=device))
 
-        with torch.no_grad():
-            if zero_init:
-                self.adapter_up_proj.weight.zero_()
+        self._initialize_shared_params(zero_init, bias)
+
+    def _initialize_shared_params(self, zero_init, bias):
+        if torch.allclose(self.adapter_down_proj.weight, torch.zeros_like(self.adapter_down_proj.weight)):
+            with torch.no_grad():
+                if zero_init:
+                    self.adapter_up_proj.weight.zero_()
+                    if bias and self.adapter_up_proj.bias is not None:
+                        self.adapter_up_proj.bias.zero_()
+                    nn.init.kaiming_uniform_(self.adapter_down_proj.weight, a=math.sqrt(5))
+                else:
+                    nn.init.xavier_uniform_(self.adapter_down_proj.weight)
+                    nn.init.xavier_uniform_(self.adapter_up_proj.weight)
+
                 if bias:
-                    self.adapter_up_proj.bias.zero_()
-                nn.init.kaiming_uniform_(self.adapter_down_proj.weight, a=math.sqrt(5))
-            else:
-                nn.init.xavier_uniform_(self.adapter_down_proj.weight)
-                nn.init.xavier_uniform_(self.adapter_up_proj.weight)
+                    if self.adapter_down_proj.bias is not None:
+                        self.adapter_down_proj.bias.fill_(0.0)
+                    if self.adapter_up_proj.bias is not None:
+                        self.adapter_up_proj.bias.fill_(0.0)
 
     def forward(self, x: torch.Tensor):
-        # 1) original output
+        """
+        Batch-optimized forward pass.
+
+        Args:
+            x: Input tensor [batch_size, seq_len, hidden_dim]
+        Returns:
+            Output tensor with same shape as input
+        """
         x_pretrained = self.pretrained_linear(x)
 
-        # 2) adapter path
         z = self.adapter_down_proj(x)
         z = self.activation(z)
         z = self.mamba(z)
         z = self.adapter_up_proj(z)
 
-        # 3) scale and add to original output
         return x_pretrained + self.alpha * z
+
+    def get_adapter_params(self):
+        adapter_params = []
+
+        adapter_params.extend(list(self.mamba.parameters()))
+
+        if isinstance(self.alpha, nn.Parameter):
+            adapter_params.append(self.alpha)
+
+        return adapter_params
+
+    @classmethod
+    def count_shared_projection_params(cls):
+        total_params = 0
+        for param_dict in cls._shared_params.values():
+            total_params += sum(p.numel() for p in param_dict['down'].parameters())
+            total_params += sum(p.numel() for p in param_dict['up'].parameters())
+        return total_params
 
 class LoRA(nn.Module):
     """This class implements the LoRA Adapter as described in:
