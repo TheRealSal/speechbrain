@@ -456,7 +456,7 @@ class Conformer(nn.Module):
         )
 
 
-class S4A(nn.Module):
+class MambAdapter(nn.Module):
     _shared_params = {}
     _creation_lock = threading.Lock()
 
@@ -562,7 +562,7 @@ class S4A(nn.Module):
         x_pretrained = self.pretrained_linear(x)
 
         z = self.adapter_down_proj(x)
-        z = self.activation(z)
+        # z = self.activation(z)
         z = self.mamba(z)
         z = self.adapter_up_proj(z)
 
