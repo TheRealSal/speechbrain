@@ -5,7 +5,7 @@ Authors
  * Titouan Parcollet 2024
  * Peter Plantinga 2024
 """
-
+import math
 import warnings
 from fnmatch import fnmatch
 
@@ -14,6 +14,10 @@ import torch.nn as nn
 
 from speechbrain.nnet.activations import Swish
 from speechbrain.utils import checkpoints
+from transformers.models.whisper.modeling_whisper import WhisperAttention, MLPWrapper
+import threading
+
+from mamba_ssm import Mamba
 
 MHA_WARNING = """
 Torch's native multi-head attention is not adaptable since it accesses layer
@@ -272,17 +276,19 @@ class HoulsbyAdapterLinear(nn.Module):
         projection_size,
         activation=Swish,
         bias=True,
+        zero_init=False,
     ):
         super().__init__()
 
-        if not isinstance(target_linear, nn.Linear):
-            raise ValueError(
-                "HoulsbyLinear currently only supports linear layers, "
-                f"but instead got {type(target_linear)}."
-            )
-
-        output_size = target_linear.weight.data.shape[0]
-        device = target_linear.weight.device
+        if isinstance(target_linear, WhisperAttention):
+            output_size = target_linear.embed_dim
+            device = target_linear.out_proj.weight.device
+        elif isinstance(target_linear, MLPWrapper):
+            output_size = target_linear.out_features
+            device = target_linear.fc1.weight.device
+        else:
+            output_size = target_linear.weight.data.shape[0]
+            device = target_linear.weight.device
 
         self.pretrained_linear = target_linear
         self.pretrained_linear.requires_grad = False
@@ -297,6 +303,16 @@ class HoulsbyAdapterLinear(nn.Module):
         if bias:
             self.adapter_down_proj.bias.data.fill_(0.0)
             self.adapter_up_proj.bias.data.fill_(0.0)
+
+        with torch.no_grad():
+            if zero_init:
+                self.adapter_up_proj.weight.zero_()
+                if bias:
+                    self.adapter_up_proj.bias.zero_()
+                nn.init.kaiming_uniform_(self.adapter_down_proj.weight, a=math.sqrt(5))
+            else:
+                nn.init.xavier_uniform_(self.adapter_down_proj.weight)
+                nn.init.xavier_uniform_(self.adapter_up_proj.weight)
 
     def forward(self, x: torch.Tensor):
         """Applies the HoulsbyAdapter to an input tensor `x`.
@@ -315,11 +331,260 @@ class HoulsbyAdapterLinear(nn.Module):
 
         return (
             self.adapter_up_proj(
-                self.activation(self.adapter_down_proj(x_pretrained))
+                self.activation(self.adapter_down_proj(x))
             )
             + x_pretrained
         )
 
+
+class Conformer(nn.Module):
+    """This class implements the Houlsby Adapter as described in:
+    'Parameter-Efficient Transfer Learning for NLP'
+    https://arxiv.org/abs/1902.00751
+
+    Arguments
+    ---------
+    target_linear: nn.Module
+        Module corresponding to the pretrained Linear that will be wrapped with
+        this adapter.
+    projection_size: int
+        Size of the projection layer (usually smaller).
+    activation: nn.Module
+        The activation function. Default is Swish.
+    bias: bool
+        Whether to use biases in the linear projections.
+
+    Example
+    -------
+    >>> import torch
+    >>> x = torch.rand((8, 60, 64))
+    >>> base_linear = nn.Linear(64, 64)
+    >>> adapt = HoulsbyAdapterLinear(base_linear, 8)
+    >>> output = adapt(x)
+    >>> output.shape
+    torch.Size([8, 60, 64])
+    """
+
+    def __init__(
+        self,
+        target_linear,
+        projection_size,
+        kernel_size=31,
+        activation=Swish,
+        bias=True,
+        zero_init=False,
+    ):
+        super().__init__()
+
+        if isinstance(target_linear, WhisperAttention):
+            output_size = target_linear.embed_dim
+            device = target_linear.out_proj.weight.device
+        elif isinstance(target_linear, MLPWrapper):
+            output_size = target_linear.out_features
+            device = target_linear.fc1.weight.device
+        else:
+            output_size = target_linear.weight.data.shape[0]
+            device = target_linear.weight.device
+
+        self.pretrained_linear = target_linear
+        self.pretrained_linear.requires_grad = False
+
+        self.pwise_conv1 = nn.Conv1d(
+            in_channels=output_size, out_channels=projection_size * 2, kernel_size=1, device=device
+        )
+
+        self.act1 = nn.GLU(dim=1)
+        self.dwise_conv = nn.Conv1d(
+            in_channels=projection_size,
+            out_channels=projection_size,
+            kernel_size=kernel_size,
+            groups=projection_size,
+            padding="same",
+            device = device
+        )
+        self.bnorm = nn.BatchNorm1d(num_features=projection_size, device=device)
+        self.act2 = nn.SiLU()
+        self.pwise_conv2 = nn.Conv1d(
+            in_channels=projection_size, out_channels=output_size, kernel_size=1, device=device
+        )
+
+        self.dropout = nn.Dropout(0)
+
+        with torch.no_grad():
+            nn.init.xavier_uniform_(self.pwise_conv1.weight)
+            if self.pwise_conv1.bias is not None:
+                self.pwise_conv1.bias.zero_()
+
+            nn.init.kaiming_uniform_(self.dwise_conv.weight, a=math.sqrt(5))
+            if self.dwise_conv.bias is not None:
+                self.dwise_conv.bias.zero_()
+
+            self.bnorm.weight.fill_(1.0)
+            self.bnorm.bias.zero_()
+            if zero_init:
+                self.pwise_conv2.weight.zero_()
+                if self.pwise_conv2.bias is not None:
+                    self.pwise_conv2.bias.zero_()
+
+    def forward(self, x: torch.Tensor):
+        """Applies the HoulsbyAdapter to an input tensor `x`.
+
+        Arguments
+        ---------
+        x: torch.Tensor
+            Input tensor to the adapter module. Shape: [B, Time, X]
+
+        Returns
+        -------
+        The linear outputs
+        """
+
+        x_pretrained = self.pretrained_linear(x)
+
+        adapter_out = x.transpose(-1, -2)
+        adapter_out = self.pwise_conv1(adapter_out)  # [B, 2d, M]
+        adapter_out = self.act1(adapter_out)  # [B, d, M]
+        adapter_out = self.dwise_conv(adapter_out)
+        adapter_out = self.bnorm(adapter_out)
+        adapter_out = self.act2(adapter_out)
+        adapter_out = self.pwise_conv2(adapter_out)
+        adapter_out = self.dropout(adapter_out)
+        adapter_out = adapter_out.transpose(-1, -2)  # [B, M, d]
+
+        return (
+            adapter_out + x_pretrained
+        )
+
+
+class MambAdapter(nn.Module):
+    _shared_params = {}
+    _creation_lock = threading.Lock()
+
+    @classmethod
+    def get_or_create_shared_params(cls, component_type, output_size, projection_size, device, bias=True):
+        param_key = f"{component_type}_{output_size}_{projection_size}_{device}"
+
+        if param_key not in cls._shared_params:
+            with cls._creation_lock:
+                # Double-check pattern to avoid race conditions
+                if param_key not in cls._shared_params:
+                    cls._shared_params[param_key] = {
+                        'down': nn.Linear(output_size, projection_size, bias=bias, device=device),
+                        'up': nn.Linear(projection_size, output_size, bias=bias, device=device)
+                    }
+
+        return cls._shared_params[param_key]['down'], cls._shared_params[param_key]['up']
+
+    @classmethod
+    def clear_shared_params(cls):
+        """Clear shared parameters - useful for testing or memory cleanup."""
+        cls._shared_params.clear()
+
+    def __init__(
+            self,
+            target_linear,
+            projection_size,
+            kernel_size=24,
+            d_state=8,
+            expand=2,
+            activation=Swish,
+            bias=True,
+            alpha_init: float = 1.0,
+            learn_alpha: bool = False,
+            zero_init=False,
+            kaiming_init=False
+    ):
+        super().__init__()
+
+        if isinstance(target_linear, WhisperAttention):
+            output_size = target_linear.embed_dim
+            device = target_linear.out_proj.weight.device
+            self.component_type = "attention"
+        elif isinstance(target_linear, MLPWrapper):
+            output_size = target_linear.out_features
+            device = target_linear.fc1.weight.device
+            self.component_type = f"mlp_{target_linear.location}"
+        else:
+            output_size = target_linear.weight.data.shape[0]
+            device = target_linear.weight.device
+            self.component_type = "linear"
+
+        self.pretrained_linear = target_linear
+        self.pretrained_linear.requires_grad_(False)
+
+        self.adapter_down_proj, self.adapter_up_proj = self.get_or_create_shared_params(
+            self.component_type, output_size, projection_size, device, bias
+        )
+
+        self.mamba = Mamba(
+            d_model=projection_size,
+            d_state=d_state,
+            d_conv=kernel_size,
+            expand=expand
+        ).to(device)
+
+        self.activation = activation()
+
+        if learn_alpha:
+            self.alpha = nn.Parameter(torch.tensor(alpha_init, device=device))
+        else:
+            self.register_buffer("alpha", torch.tensor(alpha_init, device=device))
+
+        self._initialize_shared_params(zero_init, bias)
+
+    def _initialize_shared_params(self, zero_init, bias):
+        if torch.allclose(self.adapter_down_proj.weight, torch.zeros_like(self.adapter_down_proj.weight)):
+            with torch.no_grad():
+                if zero_init:
+                    self.adapter_up_proj.weight.zero_()
+                    if bias and self.adapter_up_proj.bias is not None:
+                        self.adapter_up_proj.bias.zero_()
+                    nn.init.kaiming_uniform_(self.adapter_down_proj.weight, a=math.sqrt(5))
+                else:
+                    nn.init.xavier_uniform_(self.adapter_down_proj.weight)
+                    nn.init.xavier_uniform_(self.adapter_up_proj.weight)
+
+                if bias:
+                    if self.adapter_down_proj.bias is not None:
+                        self.adapter_down_proj.bias.fill_(0.0)
+                    if self.adapter_up_proj.bias is not None:
+                        self.adapter_up_proj.bias.fill_(0.0)
+
+    def forward(self, x: torch.Tensor):
+        """
+        Batch-optimized forward pass.
+
+        Args:
+            x: Input tensor [batch_size, seq_len, hidden_dim]
+        Returns:
+            Output tensor with same shape as input
+        """
+        x_pretrained = self.pretrained_linear(x)
+
+        z = self.adapter_down_proj(x)
+        # z = self.activation(z)
+        z = self.mamba(z)
+        z = self.adapter_up_proj(z)
+
+        return x_pretrained + self.alpha * z
+
+    def get_adapter_params(self):
+        adapter_params = []
+
+        adapter_params.extend(list(self.mamba.parameters()))
+
+        if isinstance(self.alpha, nn.Parameter):
+            adapter_params.append(self.alpha)
+
+        return adapter_params
+
+    @classmethod
+    def count_shared_projection_params(cls):
+        total_params = 0
+        for param_dict in cls._shared_params.values():
+            total_params += sum(p.numel() for p in param_dict['down'].parameters())
+            total_params += sum(p.numel() for p in param_dict['up'].parameters())
+        return total_params
 
 class LoRA(nn.Module):
     """This class implements the LoRA Adapter as described in:
