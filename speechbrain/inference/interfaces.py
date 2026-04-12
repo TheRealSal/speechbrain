@@ -280,6 +280,8 @@ class Pretrained(torch.nn.Module):
         # Set device type based on device string
         if self.device == "cpu":
             self.device_type = "cpu"
+        elif self.device == "mps":
+            self.device_type = "mps"
         elif "cuda" in self.device:
             self.device_type = "cuda"
             # Set cuda device based on device string

@@ -88,7 +88,7 @@ class Tacotron2(Pretrained):
         sequence = self.hparams.text_to_sequence(txt, self.text_cleaners)
         return sequence, len(sequence)
 
-    def encode_batch(self, texts):
+    def encode_batch(self, texts, grad=False):
         """Computes mel-spectrogram for a list of texts
 
         Texts must be sorted in decreasing order on their lengths
@@ -102,7 +102,10 @@ class Tacotron2(Pretrained):
         -------
         tensors of output spectrograms, output lengths and alignments
         """
-        with torch.no_grad():
+
+        ctx = torch.enable_grad if grad else torch.no_grad
+
+        with ctx():
             inputs = [
                 {
                     "text_sequences": torch.tensor(
@@ -124,13 +127,13 @@ class Tacotron2(Pretrained):
             )
         return mel_outputs_postnet, mel_lengths, alignments
 
-    def encode_text(self, text):
+    def encode_text(self, text, grad=False):
         """Runs inference for a single text str"""
-        return self.encode_batch([text])
+        return self.encode_batch([text], grad)
 
-    def forward(self, texts):
+    def forward(self, texts, grad=False):
         "Encodes the input texts."
-        return self.encode_batch(texts)
+        return self.encode_batch(texts, grad)
 
 
 class MSTacotron2(Pretrained):

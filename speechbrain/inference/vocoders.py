@@ -59,7 +59,7 @@ class HIFIGAN(Pretrained):
         self.infer = self.hparams.generator.inference
         self.first_call = True
 
-    def decode_batch(self, spectrogram, mel_lens=None, hop_len=None):
+    def decode_batch(self, spectrogram, mel_lens=None, hop_len=None, grad=False):
         """Computes waveforms from a batch of mel-spectrograms
 
         Arguments
@@ -72,6 +72,9 @@ class HIFIGAN(Pretrained):
         hop_len: int
             hop length used for mel-spectrogram extraction
             should be the same value as in the .yaml file
+        grad: bool
+            If True, preserves the gradient computational graph (for training).
+            If False (default), runs under torch.no_grad() for inference.
 
         Returns
         -------
@@ -82,7 +85,9 @@ class HIFIGAN(Pretrained):
         if self.first_call:
             self.hparams.generator.remove_weight_norm()
             self.first_call = False
-        with torch.no_grad():
+
+        ctx = torch.enable_grad if grad else torch.no_grad
+        with ctx():
             waveform = self.infer(spectrogram.to(self.device))
 
         # Mask the noise caused by padding during batch inference
