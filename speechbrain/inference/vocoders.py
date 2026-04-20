@@ -88,7 +88,7 @@ class HIFIGAN(Pretrained):
 
         ctx = torch.enable_grad if grad else torch.no_grad
         with ctx():
-            waveform = self.infer(spectrogram.to(self.device))
+            waveform = self.infer(spectrogram.to(self.device), grad=grad)
 
         # Mask the noise caused by padding during batch inference
         if mel_lens is not None and hop_len is not None:

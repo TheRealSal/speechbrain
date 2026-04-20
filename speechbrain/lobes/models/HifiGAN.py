@@ -528,8 +528,7 @@ class HifiganGenerator(torch.nn.Module):
         self.conv_pre.remove_weight_norm()
         self.conv_post.remove_weight_norm()
 
-    @torch.no_grad()
-    def inference(self, c, padding=True):
+    def inference(self, c, padding=True, grad=False):
         """The inference function performs a padding and runs the forward method.
 
         Arguments
@@ -543,11 +542,13 @@ class HifiganGenerator(torch.nn.Module):
         -------
         The generator outputs
         """
-        if padding:
-            c = torch.nn.functional.pad(
-                c, (self.inference_padding, self.inference_padding), "replicate"
-            )
-        return self.forward(c)
+        ctx = torch.enable_grad if grad else torch.no_grad
+        with ctx():
+            if padding:
+                c = torch.nn.functional.pad(
+                    c, (self.inference_padding, self.inference_padding), "replicate"
+                )
+            return self.forward(c)
 
 
 class VariancePredictor(nn.Module):
